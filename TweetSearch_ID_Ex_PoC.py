@@ -1,27 +1,43 @@
 import csv
 import asyncio
-from twikit.client import Client
+from twikit import Client
 
-async def get_unique_user_ids_and_save_to_csv(query, filename):
-    client = Client(language='en')
-    await client.login(auth_info_1='your_username', password='your_password')
+client = Client('ja-JP')
 
-    # 検索結果を取得
-    search_results = await client.search_tweet(query=query, product='Latest', count=100)
+# 既存のCSVファイルからすでに保存されたユーザーIDを読み込む関数
+def load_existing_user_ids(csv_file):
+    existing_user_ids = set()
+    try:
+        with open(csv_file, mode='r', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            next(reader)  # ヘッダーをスキップ
+            for row in reader:
+                existing_user_ids.add(row[0])  # ユーザーIDのカラムをセットに追加
+    except FileNotFoundError:
+        pass  # ファイルがない場合は新規作成として扱う
+    return existing_user_ids
+
+async def main():
+    # cookies.json からログイン情報を読み込む
+    client.load_cookies("cookies.json")
+
+    # ツイートを検索 (recentで最新のツイートを取得)
+    tweets = await client.search_tweet("#海外出稼ぎ", count=40, product='Latest')
     
-    # ユーザーIDをセットに保存 (重複を自動的に排除)
-    unique_user_ids = {tweet.user_id for tweet in search_results}
-
-    # CSVファイルに保存
-    with open(filename, mode='w', newline='', encoding='utf-8') as file:
+    # 既存のCSVファイルからユーザーIDをロード
+    existing_user_ids = load_existing_user_ids(filename)
+    
+    # 検索結果をCSVファイルに保存
+    with open(filename, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
-        writer.writerow(['User ID'])  # ヘッダー
-        for user_id in unique_user_ids:
-            writer.writerow([user_id])
-
-    await client.logout()
+        if not existing_user_ids:  # 既存ファイルがなければヘッダーを書き込む
+            writer.writerow(['User ID', 'User Name', 'Screen Name'])
+        
+        for tweet in tweets:
+            if tweet.user.id not in existing_user_ids:  # ユーザーIDに重複がなければ書き込む
+                writer.writerow([tweet.user.id, tweet.user.name, tweet.user.screen_name])
+                existing_user_ids.add(tweet.user.id)  # 新しいユーザーIDをセットに追加
 
 # 実行
-query = "特定のキーワード"
-filename = "unique_user_ids.csv"
-asyncio.run(get_unique_user_ids_and_save_to_csv(query, filename))
+filename = "tweet_data.csv"
+asyncio.run(main())
